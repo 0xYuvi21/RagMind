@@ -1,0 +1,16 @@
+langchain
+langchain-community
+langgraph
+langchain-chroma
+langchain-huggingface
+langchain-unstructured[local]
+langchain-groq
+sentence-transformers
+python-dotenv
+unstructured[all-docs]
+langchain-unstructured
+unstructured-client
+langchain-core
+fastapi
+uvicorn[standard]
+python-multipart

@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --surface2: #f0ede8;
+    --border: #e8e4de;
+    --border2: #d8d3cc;
+    --text: #1a1816;
+    --text2: #6b6560;
+    --text3: #9e9890;
+    --accent: #2d6a4f;
+    --accent-light: #e8f5ee;
+    --accent-hover: #245a42;
+    --user-bubble: #1a1816;
+    --user-text: #f7f6f3;
+    --ai-bubble: #ffffff;
+    --source-bg: #f9f7f4;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+    --radius: 14px;
+    --radius-sm: 8px;
+    --sidebar-w: 260px;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar-header {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .logo-icon svg { width: 18px; height: 18px; color: white; }
+
+  .logo-name {
+    font-family: 'Lora', serif;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: -0.2px;
+  }
+
+  .logo-name span {
+    color: var(--accent);
+  }
+
+  .new-chat-btn {
+    width: 100%;
+    padding: 9px 14px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.15s;
+  }
+
+  .new-chat-btn:hover { background: var(--accent-hover); }
+  .new-chat-btn svg { width: 15px; height: 15px; }
+
+  .sidebar-section {
+    padding: 14px 12px 6px;
+  }
+
+  .sidebar-section-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text3);
+    padding: 0 6px;
+    margin-bottom: 6px;
+  }
+
+  .chat-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
+  .chat-list::-webkit-scrollbar { width: 4px; }
+  .chat-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  .chat-item {
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.12s;
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-item:hover { background: var(--surface2); color: var(--text); }
+  .chat-item.active { background: var(--accent-light); color: var(--accent); font-weight: 500; }
+  .chat-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  .sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+
+  .footer-btn {
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex; align-items: center; gap: 9px;
+    font-size: 13px;
+    color: var(--text2);
+    transition: background 0.12s;
+    border: none; background: none;
+    font-family: 'DM Sans', sans-serif;
+    width: 100%; text-align: left;
+  }
+
+  .footer-btn:hover { background: var(--surface2); color: var(--text); }
+  .footer-btn svg { width: 15px; height: 15px; }
+
+  /* ── MAIN ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    height: 54px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .topbar-title {
+    font-family: 'Lora', serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    flex: 1;
+  }
+
+  .model-badge {
+    padding: 4px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text2);
+    font-weight: 500;
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  .model-badge .dot {
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  /* ── CHAT AREA ── */
+  .chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 0;
+    scroll-behavior: smooth;
+  }
+
+  .chat-area::-webkit-scrollbar { width: 5px; }
+  .chat-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  .chat-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ── WELCOME ── */
+  .welcome {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .welcome-icon {
+    width: 56px; height: 56px;
+    background: var(--accent);
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 24px rgba(45,106,79,0.2);
+  }
+
+  .welcome-icon svg { width: 28px; height: 28px; color: white; }
+
+  .welcome h1 {
+    font-family: 'Lora', serif;
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 8px;
+    letter-spacing: -0.3px;
+  }
+
+  .welcome p {
+    font-size: 14.5px;
+    color: var(--text2);
+    line-height: 1.6;
+    max-width: 380px;
+    margin-bottom: 32px;
+  }
+
+  .suggestions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    max-width: 520px;
+  }
+
+  .suggestion-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .suggestion-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .suggestion-card .s-icon {
+    font-size: 18px; margin-bottom: 8px;
+  }
+
+  .suggestion-card .s-text {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .suggestion-card .s-sub {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 3px;
+  }
+
+  /* ── MESSAGES ── */
+  .message {
+    display: flex;
+    gap: 12px;
+    animation: fadeUp 0.3s ease both;
+  }
+
+  .message.user { flex-direction: row-reverse; }
+
+  .avatar {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+  }
+
+  .avatar.ai {
+    background: var(--accent);
+    color: white;
+  }
+
+  .avatar.user {
+    background: var(--user-bubble);
+    color: var(--user-text);
+  }
+
+  .bubble {
+    max-width: 78%;
+    padding: 4px 0;
+    line-height: 1.65;
+    font-size: 14.5px;
+  }
+
+  .message.user .bubble {
+    background: var(--user-bubble);
+    color: var(--user-text);
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    border-bottom-right-radius: 4px;
+  }
+
+  .message.ai .bubble {
+    color: var(--text);
+    padding: 4px 0;
+  }
+
+  /* Word-by-word fade animation */
+  .word-fade {
+    opacity: 0;
+    display: inline;
+    animation: wordAppear 0.3s ease forwards;
+  }
+
+  @keyframes wordAppear {
+    from { opacity: 0; filter: blur(2px); transform: translateY(2px); }
+    to   { opacity: 1; filter: blur(0);   transform: translateY(0); }
+  }
+
+  .bubble p { margin-bottom: 8px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .bubble h3:first-child { margin-top: 0; }
+  .bubble strong { font-weight: 600; color: var(--text); }
+  .bubble ul, .bubble ol { margin-left: 20px; margin-bottom: 8px; }
+  .bubble li { margin-bottom: 4px; }
+  
+  .bubble code {
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    color: var(--accent);
+  }
+
+  .bubble pre {
+    background: var(--text);
+    color: #e8e4de;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    font-size: 13px;
+    margin: 10px 0;
+  }
+
+  .bubble pre code {
+    background: none; padding: 0; color: inherit; font-size: inherit;
+  }
+
+  .bubble strong { font-weight: 600; }
+
+  /* ── FOLLOW UPS (outside bubble) ── */
+  .follow-up-container {
+    margin-top: 8px;
+    margin-left: 44px; /* align with bubble (avatar 32px + gap 12px) */
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    animation: fadeUp 0.3s ease both;
+  }
+
+  .follow-up-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text3);
+    margin-bottom: 2px;
+  }
+
+  .follow-up-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 13.5px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--accent);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    text-align: left;
+    width: fit-content;
+    max-width: 78%;
+  }
+
+  .follow-up-btn::before {
+    content: "→";
+    margin-right: 8px;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+
+  .follow-up-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    transform: translateX(4px);
+  }
+
+  /* ── SOURCES ── */
+  .sources {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .sources-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text3);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  .sources-label svg { width: 12px; height: 12px; }
+
+  .source-chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+
+  .source-chip {
+    padding: 4px 10px;
+    background: var(--source-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.12s;
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  .source-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  .source-chip svg { width: 11px; height: 11px; }
+
+  /* ── TYPING ── */
+  .typing-indicator {
+    display: flex; align-items: center; gap: 5px;
+    padding: 14px 16px;
+  }
+
+  .typing-dot {
+    width: 7px; height: 7px;
+    background: var(--text3);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  /* ── INPUT AREA ── */
+  .input-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 16px 20px 18px;
+    flex-shrink: 0;
+  }
+
+  .input-inner {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  /* File preview */
+  .file-preview {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .file-preview.has-files { display: flex; }
+
+  .file-tag {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--accent-light);
+    border: 1px solid rgba(45,106,79,0.2);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .file-tag svg { width: 12px; height: 12px; }
+
+  .file-tag .remove {
+    cursor: pointer; opacity: 0.6;
+    transition: opacity 0.1s;
+    background: none; border: none; color: inherit;
+    padding: 0; line-height: 1;
+  }
+
+  .file-tag .remove:hover { opacity: 1; }
+
+  .input-box {
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 12px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .input-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(45,106,79,0.08);
+  }
+
+  .input-actions-left {
+    display: flex; align-items: center; gap: 4px;
+    padding-bottom: 2px;
+  }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    border: none; background: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text3);
+    transition: all 0.12s;
+    flex-shrink: 0;
+  }
+
+  .icon-btn:hover { background: var(--surface2); color: var(--text2); }
+  .icon-btn svg { width: 17px; height: 17px; }
+
+  #file-input { display: none; }
+
+  textarea {
+    flex: 1;
+    border: none;
+    background: none;
+    resize: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14.5px;
+    color: var(--text);
+    line-height: 1.55;
+    outline: none;
+    min-height: 22px;
+    max-height: 160px;
+    padding: 4px 0;
+    overflow-y: auto;
+  }
+
+  textarea::placeholder { color: var(--text3); }
+
+  .send-btn {
+    width: 34px; height: 34px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    margin-bottom: 1px;
+  }
+
+  .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
+  .send-btn:disabled { background: var(--border2); cursor: not-allowed; transform: none; }
+  .send-btn svg { width: 16px; height: 16px; }
+
+  .input-hint {
+    font-size: 11.5px;
+    color: var(--text3);
+    text-align: center;
+    margin-top: 10px;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── SCROLLBAR ── */
+  .chat-area::-webkit-scrollbar { width: 5px; }
+  .chat-area::-webkit-scrollbar-track { background: transparent; }
+  .chat-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── DRAG & DROP OVERLAY ── */
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .drop-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .drop-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(247, 246, 243, 0.88);
+    backdrop-filter: blur(6px);
+  }
+
+  .drop-zone {
+    position: relative;
+    z-index: 1;
+    width: 480px;
+    max-width: 90vw;
+    background: var(--surface);
+    border: 2.5px dashed var(--accent);
+    border-radius: 24px;
+    padding: 52px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(45,106,79,0.14);
+    animation: dropZoomIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .drop-overlay.hovering .drop-zone {
+    border-color: var(--accent-hover);
+    background: var(--accent-light);
+  }
+
+  @keyframes dropZoomIn {
+    from { opacity: 0; transform: scale(0.88); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  .drop-icon-wrap {
+    width: 72px; height: 72px;
+    background: var(--accent-light);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+    transition: transform 0.15s;
+  }
+
+  .drop-overlay.hovering .drop-icon-wrap {
+    transform: scale(1.1) translateY(-4px);
+  }
+
+  .drop-icon-wrap svg {
+    width: 36px; height: 36px;
+    color: var(--accent);
+  }
+
+  .drop-title {
+    font-family: 'Lora', serif;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 8px;
+    letter-spacing: -0.3px;
+  }
+
+  .drop-sub {
+    font-size: 13.5px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+
+  .drop-types {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    justify-content: center;
+  }
+
+  .drop-type-pill {
+    padding: 4px 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text3);
+    letter-spacing: 0.3px;
+  }
+
+  /* ── DRAG ACTIVE — input box glow ── */
+  .input-box.drag-active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(45,106,79,0.12);
+  }
+
+  /* ── UPLOAD TOAST ── */
+  .upload-toast {
+    position: fixed;
+    bottom: 96px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 40px;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex; align-items: center; gap: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 200;
+    white-space: nowrap;
+  }
+
+  .upload-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .upload-toast svg { width: 15px; height: 15px; color: #74d99f; }
+</style>
+</head>
+<body>
+
+<!-- DRAG & DROP OVERLAY -->
+<div class="drop-overlay" id="dropOverlay">
+  <div class="drop-backdrop"></div>
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </div>
+    <div class="drop-title">Drop your files here</div>
+    <div class="drop-sub">Release to add files to your RAG context.<br/>Supports Documents, Spreadsheets, and Images.</div>
+    <div class="drop-types">
+      <span class="drop-type-pill">Documents</span>
+      <span class="drop-type-pill">Spreadsheets</span>
+      <span class="drop-type-pill">Images</span>
+      <span class="drop-type-pill">Text</span>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD TOAST -->
+<div class="upload-toast" id="uploadToast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+  <span id="toastMsg">Files added successfully</span>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="logo-name">Rag<span>Mind</span></span>
+    </div>
+    <button class="new-chat-btn" onclick="newChat()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      New Chat
+    </button>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Recent</div>
+  </div>
+
+  <div class="chat-list" id="chatList">
+    <!-- Chats will be generated dynamically -->
+  </div>
+
+  <div class="sidebar-footer">
+    <button class="footer-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Settings
+    </button>
+    <button class="footer-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      About
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="topbar-title" id="topbarTitle">New Conversation</span>
+  </div>
+
+  <!-- CHAT AREA -->
+  <div class="chat-area" id="chatArea">
+    <div class="chat-inner" id="chatInner">
+
+      <!-- WELCOME -->
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <h1>What can I help you find?</h1>
+        <p>Ask anything about your documents. I retrieve the most relevant context and generate precise answers.</p>
+        <div class="suggestions">
+          <button class="suggestion-card" onclick="usePrompt('Summarize the key findings from the uploaded documents')">
+            <div class="s-icon">📄</div>
+            <div class="s-text">Summarize documents</div>
+            <div class="s-sub">Get a concise overview</div>
+          </button>
+          <button class="suggestion-card" onclick="usePrompt('What are the main topics covered in my knowledge base?')">
+            <div class="s-icon">🔍</div>
+            <div class="s-text">Explore topics</div>
+            <div class="s-sub">Browse knowledge base</div>
+          </button>
+          <button class="suggestion-card" onclick="usePrompt('Compare and contrast the methodologies mentioned in the documents')">
+            <div class="s-icon">⚖️</div>
+            <div class="s-text">Compare methodologies</div>
+            <div class="s-sub">Side-by-side analysis</div>
+          </button>
+          <button class="suggestion-card" onclick="usePrompt('Extract all key definitions and technical terms from the documents')">
+            <div class="s-icon">📚</div>
+            <div class="s-text">Extract definitions</div>
+            <div class="s-sub">Glossary from docs</div>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- INPUT AREA -->
+  <div class="input-area">
+    <div class="input-inner">
+      <div class="file-preview" id="filePreview"></div>
+      <div class="input-box">
+        <div class="input-actions-left">
+          <button class="icon-btn" title="Upload file" onclick="document.getElementById('file-input').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <input type="file" id="file-input" multiple accept="*/*" onchange="handleFileUpload(event)"/>
+        </div>
+
+        <textarea
+          id="messageInput"
+          placeholder="Ask anything about your documents…"
+          rows="1"
+          onkeydown="handleKeyDown(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send (Enter)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="input-hint">Press <strong>Enter</strong> to send &nbsp;·&nbsp; <strong>Shift+Enter</strong> for new line</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  let isWaiting = false;
+  let uploadedFiles = [];
+
+  // ── CHAT SESSION STORE ──
+  let chats = {};        // { id: { title, snapshot } }
+  let activeChatId = null;
+
+  function genId() {
+    return 'c' + Date.now() + Math.random().toString(36).slice(2, 6);
+  }
+
+  function welcomeHTML() {
+    return `<div class="welcome" id="welcome">
+      <div class="welcome-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <h1>What can I help you find?</h1>
+      <p>Ask anything about your documents. I retrieve the most relevant context and generate precise answers.</p>
+      <div class="suggestions">
+        <button class="suggestion-card" onclick="usePrompt('Summarize the key findings from the uploaded documents')">
+          <div class="s-icon">📄</div><div class="s-text">Summarize documents</div><div class="s-sub">Get a concise overview</div>
+        </button>
+        <button class="suggestion-card" onclick="usePrompt('What are the main topics covered in my knowledge base?')">
+          <div class="s-icon">🔍</div><div class="s-text">Explore topics</div><div class="s-sub">Browse knowledge base</div>
+        </button>
+        <button class="suggestion-card" onclick="usePrompt('Compare and contrast the methodologies mentioned in the documents')">
+          <div class="s-icon">⚖️</div><div class="s-text">Compare methodologies</div><div class="s-sub">Side-by-side analysis</div>
+        </button>
+        <button class="suggestion-card" onclick="usePrompt('Extract all key definitions and technical terms from the documents')">
+          <div class="s-icon">📚</div><div class="s-text">Extract definitions</div><div class="s-sub">Glossary from docs</div>
+        </button>
+      </div>
+    </div>`;
+  }
+
+  function saveActive() {
+    if (!activeChatId || !chats[activeChatId]) return;
+    chats[activeChatId].snapshot = document.getElementById('chatInner').innerHTML;
+    chats[activeChatId].title    = document.getElementById('topbarTitle').textContent;
+  }
+
+  function switchTo(id) {
+    saveActive();
+    activeChatId = id;
+    const chat = chats[id];
+    document.getElementById('chatInner').innerHTML = chat.snapshot || welcomeHTML();
+    document.getElementById('topbarTitle').textContent = chat.title || 'New Conversation';
+    document.querySelectorAll('.chat-item').forEach(el =>
+      el.classList.toggle('active', el.dataset.id === id)
+    );
+    scrollToBottom();
+    document.getElementById('messageInput').focus();
+  }
+
+  // Bootstrap the first chat on load
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('chatList').innerHTML = '';
+    newChat();
+  });
+
+  const sampleResponses = [
+    {
+      text: "Based on the documents in your knowledge base, **Retrieval-Augmented Generation (RAG)** works by combining two key components:\n\n1. **Retrieval** — A dense vector search (using FAISS or similar) fetches the most semantically relevant document chunks for your query.\n\n2. **Generation** — The retrieved context is passed to a language model (like LLaMA or GPT), which synthesizes a coherent, grounded answer.\n\nThis approach significantly reduces hallucinations since the model is anchored to real document content.",
+      sources: ["RAG_Architecture.pdf", "Vector_Search_Guide.md", "LLM_Overview.txt"]
+    },
+    {
+      text: "I found **3 relevant sections** across your documents that discuss this topic. Here's a consolidated summary:\n\nThe methodology uses a **two-stage pipeline**: first encoding documents into high-dimensional embeddings, then using cosine similarity to retrieve top-k chunks at inference time. The retrieved chunks are prepended to the prompt as context before querying the LLM.",
+      sources: ["methodology_notes.pdf", "embeddings_101.txt"]
+    },
+    {
+      text: "Here are the **key technical terms** extracted from your knowledge base:\n\n- **Embedding** — A dense vector representation of text in high-dimensional space\n- **FAISS** — Facebook AI Similarity Search, a library for efficient vector retrieval\n- **Chunking** — Splitting documents into smaller passages for granular retrieval\n- **Top-k Retrieval** — Fetching the k most similar document chunks to a query\n- **Context Window** — The maximum token limit an LLM can process at once",
+      sources: ["glossary.pdf", "technical_docs.md", "research_notes.txt"]
+    },
+    {
+      text: "I've analyzed your uploaded document. The main sections cover:\n\n1. Introduction to the problem domain\n2. Literature review and related work\n3. Proposed methodology\n4. Experimental results\n\nWould you like me to go deeper into any specific section?",
+      sources: ["your_document.pdf"]
+    }
+  ];
+
+  let responseIndex = 0;
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function usePrompt(text) {
+    const input = document.getElementById('messageInput');
+    input.value = text;
+    autoResize(input);
+    input.focus();
+  }
+
+  function handleFileUpload(event) {
+    const files = Array.from(event.target.files);
+    files.forEach(f => {
+      if (!uploadedFiles.find(u => u.name === f.name)) {
+        uploadedFiles.push(f);
+      }
+    });
+    renderFilePreviews();
+    event.target.value = '';
+  }
+
+  function renderFilePreviews() {
+    const preview = document.getElementById('filePreview');
+    preview.innerHTML = '';
+    if (uploadedFiles.length === 0) {
+      preview.classList.remove('has-files');
+      return;
+    }
+    preview.classList.add('has-files');
+    uploadedFiles.forEach((f, i) => {
+      const tag = document.createElement('div');
+      tag.className = 'file-tag';
+      tag.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        ${f.name}
+        <button class="remove" onclick="removeFile(${i})">✕</button>
+      `;
+      preview.appendChild(tag);
+    });
+  }
+
+  function removeFile(index) {
+    uploadedFiles.splice(index, 1);
+    renderFilePreviews();
+  }
+
+  function hideWelcome() {
+    const welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+  }
+
+  function addMessage(text, role) {
+    hideWelcome();
+    const inner = document.getElementById('chatInner');
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+
+    const avatarLetter = role === 'user' ? 'Y' : 'R';
+    const parsed = role === 'ai' ? parseMarkdown(text) : escapeHtml(text);
+
+    msg.innerHTML = `
+      <div class="avatar ${role}">${avatarLetter}</div>
+      <div class="bubble">${parsed}</div>
+    `;
+    inner.appendChild(msg);
+    scrollToBottom();
+    return msg;
+  }
+
+  function addTypingIndicator() {
+    hideWelcome();
+    const inner = document.getElementById('chatInner');
+    const msg = document.createElement('div');
+    msg.className = 'message ai';
+    msg.id = 'typing';
+    msg.innerHTML = `
+      <div class="avatar ai">R</div>
+      <div class="bubble">
+        <div class="typing-indicator">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      </div>
+    `;
+    inner.appendChild(msg);
+    scrollToBottom();
+  }
+
+  function removeTypingIndicator() {
+    const t = document.getElementById('typing');
+    if (t) t.remove();
+  }
+
+  function addAIResponse(response) {
+    removeTypingIndicator();
+    const inner = document.getElementById('chatInner');
+    const msg = document.createElement('div');
+    msg.className = 'message ai';
+
+    // Build sources footer HTML (only clean, unique file names)
+    const cleanSources = (response.sources || [])
+      .map(s => s.split(/[\\/]/).pop() || s)           // basename only
+      .filter(s => !s.includes('[Source:'))              // drop ugly [Source: …] entries
+      .filter((v, i, a) => a.indexOf(v) === i);         // deduplicate
+
+    const sourcesHTML = cleanSources.length ? `
+      <div class="sources">
+        <div class="sources-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Sources · ${cleanSources.length} document${cleanSources.length > 1 ? 's' : ''}
+        </div>
+        <div class="source-chips">
+          ${cleanSources.map(name => `
+            <div class="source-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              ${name}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    msg.innerHTML = `
+      <div class="avatar ai">R</div>
+      <div class="bubble">${parseMarkdown(response.text)}${sourcesHTML}</div>
+    `;
+
+    // Extract follow-up questions from the bubble and move them outside
+    const bubble = msg.querySelector('.bubble');
+    const followUpQuestions = [];
+    const headers = bubble.querySelectorAll('h3');
+    headers.forEach(h3 => {
+      if (h3.textContent.toLowerCase().includes('follow-up')) {
+        // Collect all follow-up items from sibling lists
+        let sibling = h3.nextElementSibling;
+        const toRemove = [h3];
+        while (sibling) {
+          if (sibling.tagName === 'UL' || sibling.tagName === 'OL') {
+            sibling.querySelectorAll('li').forEach(li => {
+              const text = li.textContent.replace(/^[-•*→]\s*/, '').trim();
+              if (text) followUpQuestions.push(text);
+            });
+            toRemove.push(sibling);
+          } else if (sibling.tagName === 'P') {
+            // Sometimes follow-up is a single paragraph
+            const text = sibling.textContent.trim();
+            if (text) followUpQuestions.push(text);
+            toRemove.push(sibling);
+          } else {
+            break;
+          }
+          sibling = sibling.nextElementSibling;
+        }
+        // Remove follow-up content from inside the bubble
+        toRemove.forEach(el => el.remove());
+      }
+    });
+
+    inner.appendChild(msg);
+
+    // Word-by-word fade-in animation on the bubble content
+    animateWordsIn(bubble);
+
+    // Render follow-up questions as clickable buttons below the message bubble
+    if (followUpQuestions.length > 0) {
+      const followUpContainer = document.createElement('div');
+      followUpContainer.className = 'follow-up-container';
+
+      // Add "Follow up" label
+      const label = document.createElement('div');
+      label.className = 'follow-up-label';
+      label.textContent = 'Follow up';
+      followUpContainer.appendChild(label);
+
+      followUpQuestions.forEach(q => {
+        const btn = document.createElement('button');
+        btn.className = 'follow-up-btn';
+        btn.textContent = q;
+        btn.onclick = () => {
+          const input = document.getElementById('messageInput');
+          input.value = q;
+          autoResize(input);
+          sendMessage();
+        };
+        followUpContainer.appendChild(btn);
+      });
+      inner.appendChild(followUpContainer);
+    }
+
+    scrollToBottom();
+  }
+
+  /**
+   * Walk a DOM subtree, wrap every text word in <span class="word-fade">
+   * with incremental animation-delay so words reveal one after another.
+   */
+  function animateWordsIn(root) {
+    const skipSelectors = '.sources, .source-chip, .sources-label';
+    let wordIndex = 0;
+    const DELAY_MS = 18;
+
+    function walk(node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.matches && node.matches(skipSelectors)) return;
+        if (node.tagName === 'CODE' || node.tagName === 'PRE') {
+          node.classList.add('word-fade');
+          node.style.animationDelay = (wordIndex * DELAY_MS) + 'ms';
+          wordIndex++;
+          return;
+        }
+        Array.from(node.childNodes).forEach(child => walk(child));
+      } else if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent;
+        if (!text.trim()) return;
+        const frag = document.createDocumentFragment();
+        const parts = text.split(/(\s+)/);
+        parts.forEach(part => {
+          if (!part) return;
+          if (/^\s+$/.test(part)) {
+            frag.appendChild(document.createTextNode(part));
+          } else {
+            const span = document.createElement('span');
+            span.className = 'word-fade';
+            span.style.animationDelay = (wordIndex * DELAY_MS) + 'ms';
+            span.textContent = part;
+            frag.appendChild(span);
+            wordIndex++;
+          }
+        });
+        node.parentNode.replaceChild(frag, node);
+      }
+    }
+
+    walk(root);
+
+    // Auto-scroll as words appear
+    const totalDuration = wordIndex * DELAY_MS + 300;
+    const scrollInterval = setInterval(() => scrollToBottom(), 100);
+    setTimeout(() => clearInterval(scrollInterval), totalDuration);
+  }
+
+  function parseMarkdown(text) {
+    // Strip out the inline Sources section entirely (sources are shown in the footer chips)
+    let formattedText = text.replace(/\n*Sources:.*?(\n\nFollow-up:|$)/is, '$1');
+    // Make Answer and Follow-up sections elegant headers if they exist
+    formattedText = formattedText.replace(/^Answer:\s*/i, '### Answer\n\n');
+    formattedText = formattedText.replace(/\n\nFollow-up:\s*/i, '\n\n### Follow-up\n\n');
+    
+    if (typeof marked !== 'undefined') {
+      return marked.parse(formattedText);
+    }
+    
+    // Fallback if marked fails to load
+    return formattedText
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n(\d+\. )/g, '<br>$1')
+      .replace(/\n- /g, '<br>• ')
+      .replace(/^/, '<p>').replace(/$/, '</p>');
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function scrollToBottom() {
+    const area = document.getElementById('chatArea');
+    setTimeout(() => area.scrollTop = area.scrollHeight, 50);
+  }
+
+  async function sendMessage() {
+    if (isWaiting) return;
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Update topbar title + sidebar label from first message
+    const titleEl = document.getElementById('topbarTitle');
+    if (titleEl.textContent === 'New Conversation') {
+      const newTitle = text.length > 38 ? text.slice(0, 38) + '…' : text;
+      titleEl.textContent = newTitle;
+      // Also update the sidebar label
+      const sidebarItem = document.querySelector(`.chat-item[data-id="${activeChatId}"] .chat-item-label`);
+      if (sidebarItem) sidebarItem.textContent = newTitle;
+      if (chats[activeChatId]) chats[activeChatId].title = newTitle;
+    }
+
+    // Add user message (with file names if any)
+    let displayText = text;
+    if (uploadedFiles.length > 0) {
+      displayText += `\n\n📎 ${uploadedFiles.map(f => f.name).join(', ')}`;
+    }
+    addMessage(displayText, 'user');
+
+    // Keep a reference to the files to send, and then clear the UI
+    const filesToSend = [...uploadedFiles];
+    uploadedFiles = [];
+    renderFilePreviews();
+
+    isWaiting = true;
+    document.getElementById('sendBtn').disabled = true;
+    addTypingIndicator();
+
+    try {
+      const formData = new FormData();
+      formData.append('query', text);
+      if (filesToSend.length > 0) {
+        filesToSend.forEach(f => formData.append('files', f));
+      }
+
+      const res = await fetch('http://127.0.0.1:8000/api/chat', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      addAIResponse({ text: data.text, sources: data.sources });
+    } catch (err) {
+      console.error(err);
+      addAIResponse({ text: "Sorry, I encountered an error.", sources: [] });
+    }
+
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
+
+  function newChat() {
+    saveActive();
+
+    const id = genId();
+    chats[id] = { title: 'New Conversation', snapshot: null };
+
+    // Add sidebar item
+    const list = document.getElementById('chatList');
+    const item = document.createElement('div');
+    item.className = 'chat-item';
+    item.dataset.id = id;
+    item.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span class="chat-item-label">New Conversation</span>
+    `;
+    item.onclick = () => switchTo(id);
+    list.insertBefore(item, list.firstChild);
+
+    switchTo(id);
+  }
+
+  function loadChat(el, index) {
+    // Legacy handler for the hardcoded demo items — do nothing extra, switchTo handles it
+    if (el.dataset.id) switchTo(el.dataset.id);
+  }
+
+  // ── DRAG & DROP ──
+  let dragCounter = 0;
+
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) showDropOverlay();
+  });
+
+  document.addEventListener('dragleave', (e) => {
+    dragCounter--;
+    if (dragCounter === 0) hideDropOverlay();
+  });
+
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const overlay = document.getElementById('dropOverlay');
+    overlay.classList.add('hovering');
+  });
+
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    hideDropOverlay();
+
+    const files = Array.from(e.dataTransfer.files);
+    // Unstructured loader supports numerous extensions. For simplicity here on the UI, we accept everything
+    // and let the backend explicitly drop anything it truly can't parse (like .exe).
+    const valid = files;
+    const rejected = 0;
+
+    if (valid.length > 0) {
+      valid.forEach(f => {
+        if (!uploadedFiles.find(u => u.name === f.name)) {
+          uploadedFiles.push(f);
+        }
+      });
+      renderFilePreviews();
+
+      let msg = valid.length === 1
+        ? `"${valid[0].name}" added`
+        : `${valid.length} files added`;
+      if (rejected > 0) msg += ` · ${rejected} unsupported skipped`;
+      showToast(msg);
+    } else if (rejected > 0) {
+      showToast(`Unsupported file type`);
+    }
+  });
+
+  function showDropOverlay() {
+    const overlay = document.getElementById('dropOverlay');
+    overlay.classList.add('active');
+    overlay.classList.remove('hovering');
+  }
+
+  function hideDropOverlay() {
+    const overlay = document.getElementById('dropOverlay');
+    overlay.classList.remove('active');
+    overlay.classList.remove('hovering');
+  }
+
+  let toastTimer = null;
+  function showToast(message) {
+    const toast = document.getElementById('uploadToast');
+    document.getElementById('toastMsg').textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>
