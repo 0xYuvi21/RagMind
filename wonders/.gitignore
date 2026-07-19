@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual env
+.venv/
+
+# Secrets
+.env
+
+# Runtime data (SQLite DB, per-chat Chroma collections, checkpoints, uploads)
+data/
+
+# Legacy upload scratch dir
+uploads/
+
+# Editor/OS
+.vscode/
+.DS_Store

@@ -1,10 +1,14 @@
 import base64
+import os
 import requests
 from pathlib import Path
 from langchain_core.tools import tool
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "richardyoung/smolvlm2-2.2b-instruct:latest"
+# Overridable via env so Backend/config.py's Settings (ollama_url /
+# ollama_vlm_model) can point this at a different Ollama instance without
+# code changes; defaults preserve the original behavior.
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_VLM_MODEL", "richardyoung/smolvlm2-2.2b-instruct:latest")
 
 
 @tool

@@ -791,9 +791,136 @@
   }
 
   .upload-toast svg { width: 15px; height: 15px; color: #74d99f; }
+
+  /* ── AUTH OVERLAY ── */
+  .auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+  }
+
+  .auth-overlay.hidden { display: none; }
+
+  .auth-card {
+    width: 360px;
+    max-width: 90vw;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 32px 28px;
+  }
+
+  .auth-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    margin-bottom: 20px;
+  }
+
+  .auth-tab {
+    flex: 1;
+    border: none;
+    background: none;
+    padding: 8px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .auth-tab.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+
+  .auth-field {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    margin-bottom: 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .auth-field:focus { border-color: var(--accent); }
+
+  .auth-submit {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background 0.15s;
+  }
+
+  .auth-submit:hover { background: var(--accent-hover); }
+  .auth-submit:disabled { background: var(--border2); cursor: not-allowed; }
+
+  .auth-error {
+    color: #c0392b;
+    font-size: 12.5px;
+    margin-top: 10px;
+    min-height: 16px;
+  }
+
+  .chat-item-delete {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .chat-item-delete:hover { color: #c0392b; background: rgba(192,57,57,0.08); }
 </style>
 </head>
 <body>
+
+<!-- AUTH OVERLAY -->
+<div class="auth-overlay hidden" id="authOverlay">
+  <div class="auth-card">
+    <div class="logo" style="justify-content:center; margin-bottom: 22px;">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="logo-name">Rag<span>Mind</span></span>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="loginTab" type="button" onclick="switchAuthTab('login')">Log in</button>
+      <button class="auth-tab" id="registerTab" type="button" onclick="switchAuthTab('register')">Register</button>
+    </div>
+    <form id="authForm" onsubmit="handleAuthSubmit(event)">
+      <input class="auth-field" type="email" id="authEmail" placeholder="Email" autocomplete="username" required />
+      <input class="auth-field" type="password" id="authPassword" placeholder="Password (min 8 characters)" autocomplete="current-password" minlength="8" required />
+      <button class="auth-submit" id="authSubmitBtn" type="submit">Log in</button>
+    </form>
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
 
 <!-- DRAG & DROP OVERLAY -->
 <div class="drop-overlay" id="dropOverlay">
@@ -807,12 +934,12 @@
       </svg>
     </div>
     <div class="drop-title">Drop your files here</div>
-    <div class="drop-sub">Release to add files to your RAG context.<br/>Supports Documents, Spreadsheets, and Images.</div>
+    <div class="drop-sub">Release to add files to this conversation's knowledge base.</div>
     <div class="drop-types">
-      <span class="drop-type-pill">Documents</span>
-      <span class="drop-type-pill">Spreadsheets</span>
-      <span class="drop-type-pill">Images</span>
-      <span class="drop-type-pill">Text</span>
+      <span class="drop-type-pill">PDF</span>
+      <span class="drop-type-pill">DOCX</span>
+      <span class="drop-type-pill">TXT</span>
+      <span class="drop-type-pill">MD</span>
     </div>
   </div>
 </div>
@@ -860,6 +987,10 @@
     <button class="footer-btn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
       About
+    </button>
+    <button class="footer-btn" onclick="logout()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Log out
     </button>
   </div>
 </aside>
@@ -922,7 +1053,7 @@
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
           </button>
-          <input type="file" id="file-input" multiple accept="*/*" onchange="handleFileUpload(event)"/>
+          <input type="file" id="file-input" multiple accept=".pdf,.docx,.txt,.md" onchange="handleFileUpload(event)"/>
         </div>
 
         <textarea
@@ -945,16 +1076,106 @@
 </main>
 
 <script>
+  const API_BASE = 'http://127.0.0.1:8000';
+
   let isWaiting = false;
   let uploadedFiles = [];
 
-  // ── CHAT SESSION STORE ──
-  let chats = {};        // { id: { title, snapshot } }
-  let activeChatId = null;
+  // ── AUTH ──
+  // JWT lives in localStorage and is sent as `Authorization: Bearer <token>`
+  // on every API call (apiFetch below). Real conversations/messages are
+  // fetched from the backend — nothing chat-related is kept only in memory.
+  let authMode = 'login';
 
-  function genId() {
-    return 'c' + Date.now() + Math.random().toString(36).slice(2, 6);
+  function getToken() { return localStorage.getItem('ragmind_token'); }
+  function setToken(token) { localStorage.setItem('ragmind_token', token); }
+  function clearToken() { localStorage.removeItem('ragmind_token'); }
+
+  async function apiFetch(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}${path}`, Object.assign({}, options, { headers }));
+    if (res.status === 401) {
+      clearToken();
+      showAuthOverlay();
+      throw new Error('Not authenticated');
+    }
+    return res;
   }
+
+  function showAuthOverlay() {
+    document.getElementById('authOverlay').classList.remove('hidden');
+  }
+
+  function hideAuthOverlay() {
+    document.getElementById('authOverlay').classList.add('hidden');
+  }
+
+  function switchAuthTab(mode) {
+    authMode = mode;
+    document.getElementById('loginTab').classList.toggle('active', mode === 'login');
+    document.getElementById('registerTab').classList.toggle('active', mode === 'register');
+    document.getElementById('authSubmitBtn').textContent = mode === 'login' ? 'Log in' : 'Create account';
+    document.getElementById('authError').textContent = '';
+  }
+
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const errorEl = document.getElementById('authError');
+    const submitBtn = document.getElementById('authSubmitBtn');
+    errorEl.textContent = '';
+    submitBtn.disabled = true;
+
+    try {
+      if (authMode === 'register') {
+        const registerRes = await fetch(`${API_BASE}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        if (!registerRes.ok) {
+          const body = await registerRes.json().catch(() => ({}));
+          throw new Error(body.detail || 'Could not create account');
+        }
+      }
+
+      const loginRes = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!loginRes.ok) {
+        const body = await loginRes.json().catch(() => ({}));
+        throw new Error(body.detail || 'Incorrect email or password');
+      }
+      const data = await loginRes.json();
+      setToken(data.access_token);
+      hideAuthOverlay();
+      await bootstrapConversations();
+    } catch (err) {
+      errorEl.textContent = err.message || 'Something went wrong';
+    } finally {
+      submitBtn.disabled = false;
+    }
+  }
+
+  function logout() {
+    clearToken();
+    activeChatId = null;
+    conversations = [];
+    document.getElementById('chatList').innerHTML = '';
+    document.getElementById('chatInner').innerHTML = welcomeHTML();
+    document.getElementById('topbarTitle').textContent = 'New Conversation';
+    showAuthOverlay();
+  }
+
+  // ── CONVERSATIONS (backed by the real API — GET/POST/PATCH/DELETE /conversations) ──
+  let conversations = [];  // [{ id, title, ... }]
+  let activeChatId = null;
 
   function welcomeHTML() {
     return `<div class="welcome" id="welcome">
@@ -982,51 +1203,106 @@
     </div>`;
   }
 
-  function saveActive() {
-    if (!activeChatId || !chats[activeChatId]) return;
-    chats[activeChatId].snapshot = document.getElementById('chatInner').innerHTML;
-    chats[activeChatId].title    = document.getElementById('topbarTitle').textContent;
+  function renderChatList() {
+    const list = document.getElementById('chatList');
+    list.innerHTML = '';
+    conversations.forEach(conv => {
+      const item = document.createElement('div');
+      item.className = 'chat-item' + (conv.id === activeChatId ? ' active' : '');
+      item.dataset.id = conv.id;
+      item.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="chat-item-label">${escapeHtml(conv.title)}</span>
+        <button class="chat-item-delete" title="Delete conversation">✕</button>
+      `;
+      item.addEventListener('click', () => switchTo(conv.id));
+      item.querySelector('.chat-item-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteConversation(conv.id);
+      });
+      list.appendChild(item);
+    });
   }
 
-  function switchTo(id) {
-    saveActive();
+  async function bootstrapConversations() {
+    const res = await apiFetch('/conversations');
+    conversations = await res.json();
+    renderChatList();
+
+    if (conversations.length === 0) {
+      await createConversation();
+    } else {
+      await switchTo(conversations[0].id);
+    }
+  }
+
+  async function createConversation() {
+    const res = await apiFetch('/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'New Conversation' }),
+    });
+    const conv = await res.json();
+    conversations.unshift(conv);
+    renderChatList();
+    await switchTo(conv.id);
+  }
+
+  function newChat() { createConversation(); }
+
+  async function deleteConversation(id) {
+    await apiFetch(`/conversations/${id}`, { method: 'DELETE' });
+    conversations = conversations.filter(c => c.id !== id);
+    if (activeChatId === id) {
+      activeChatId = null;
+      if (conversations.length > 0) {
+        await switchTo(conversations[0].id);
+      } else {
+        await createConversation();
+        return;
+      }
+    }
+    renderChatList();
+  }
+
+  async function switchTo(id) {
     activeChatId = id;
-    const chat = chats[id];
-    document.getElementById('chatInner').innerHTML = chat.snapshot || welcomeHTML();
-    document.getElementById('topbarTitle').textContent = chat.title || 'New Conversation';
-    document.querySelectorAll('.chat-item').forEach(el =>
-      el.classList.toggle('active', el.dataset.id === id)
-    );
+    renderChatList();
+
+    const conv = conversations.find(c => c.id === id);
+    document.getElementById('topbarTitle').textContent = (conv && conv.title) || 'New Conversation';
+
+    const inner = document.getElementById('chatInner');
+    inner.innerHTML = welcomeHTML();
+
+    const res = await apiFetch(`/conversations/${id}/messages`);
+    const messages = await res.json();
+    if (messages.length > 0) hideWelcome();
+    messages.forEach(m => {
+      if (m.role === 'user') {
+        addMessage(m.content, 'user');
+      } else {
+        addAIResponse({ text: m.content, sources: m.sources || [] });
+      }
+    });
+
     scrollToBottom();
     document.getElementById('messageInput').focus();
   }
 
-  // Bootstrap the first chat on load
-  window.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('chatList').innerHTML = '';
-    newChat();
-  });
-
-  const sampleResponses = [
-    {
-      text: "Based on the documents in your knowledge base, **Retrieval-Augmented Generation (RAG)** works by combining two key components:\n\n1. **Retrieval** — A dense vector search (using FAISS or similar) fetches the most semantically relevant document chunks for your query.\n\n2. **Generation** — The retrieved context is passed to a language model (like LLaMA or GPT), which synthesizes a coherent, grounded answer.\n\nThis approach significantly reduces hallucinations since the model is anchored to real document content.",
-      sources: ["RAG_Architecture.pdf", "Vector_Search_Guide.md", "LLM_Overview.txt"]
-    },
-    {
-      text: "I found **3 relevant sections** across your documents that discuss this topic. Here's a consolidated summary:\n\nThe methodology uses a **two-stage pipeline**: first encoding documents into high-dimensional embeddings, then using cosine similarity to retrieve top-k chunks at inference time. The retrieved chunks are prepended to the prompt as context before querying the LLM.",
-      sources: ["methodology_notes.pdf", "embeddings_101.txt"]
-    },
-    {
-      text: "Here are the **key technical terms** extracted from your knowledge base:\n\n- **Embedding** — A dense vector representation of text in high-dimensional space\n- **FAISS** — Facebook AI Similarity Search, a library for efficient vector retrieval\n- **Chunking** — Splitting documents into smaller passages for granular retrieval\n- **Top-k Retrieval** — Fetching the k most similar document chunks to a query\n- **Context Window** — The maximum token limit an LLM can process at once",
-      sources: ["glossary.pdf", "technical_docs.md", "research_notes.txt"]
-    },
-    {
-      text: "I've analyzed your uploaded document. The main sections cover:\n\n1. Introduction to the problem domain\n2. Literature review and related work\n3. Proposed methodology\n4. Experimental results\n\nWould you like me to go deeper into any specific section?",
-      sources: ["your_document.pdf"]
+  // Bootstrap on load: show the auth screen unless we already have a token,
+  // in which case load this user's real conversations from the backend.
+  window.addEventListener('DOMContentLoaded', async () => {
+    if (!getToken()) {
+      showAuthOverlay();
+      return;
     }
-  ];
-
-  let responseIndex = 0;
+    try {
+      await bootstrapConversations();
+    } catch (err) {
+      console.error(err);
+    }
+  });
 
   function autoResize(el) {
     el.style.height = 'auto';
@@ -1319,7 +1595,7 @@
   }
 
   async function sendMessage() {
-    if (isWaiting) return;
+    if (isWaiting || !activeChatId) return;
     const input = document.getElementById('messageInput');
     const text = input.value.trim();
     if (!text) return;
@@ -1327,16 +1603,9 @@
     input.value = '';
     input.style.height = 'auto';
 
-    // Update topbar title + sidebar label from first message
+    // Update topbar title + sidebar label from the first message in a fresh chat
     const titleEl = document.getElementById('topbarTitle');
-    if (titleEl.textContent === 'New Conversation') {
-      const newTitle = text.length > 38 ? text.slice(0, 38) + '…' : text;
-      titleEl.textContent = newTitle;
-      // Also update the sidebar label
-      const sidebarItem = document.querySelector(`.chat-item[data-id="${activeChatId}"] .chat-item-label`);
-      if (sidebarItem) sidebarItem.textContent = newTitle;
-      if (chats[activeChatId]) chats[activeChatId].title = newTitle;
-    }
+    const isFirstMessage = titleEl.textContent === 'New Conversation';
 
     // Add user message (with file names if any)
     let displayText = text;
@@ -1352,60 +1621,56 @@
 
     isWaiting = true;
     document.getElementById('sendBtn').disabled = true;
-    addTypingIndicator();
 
     try {
-      const formData = new FormData();
-      formData.append('query', text);
-      if (filesToSend.length > 0) {
-        filesToSend.forEach(f => formData.append('files', f));
+      // 1. Upload any attached files into THIS conversation first, so the
+      // question below can immediately be answered from them.
+      for (const file of filesToSend) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadRes = await apiFetch(`/conversations/${activeChatId}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (!uploadRes.ok) {
+          const body = await uploadRes.json().catch(() => ({}));
+          showToast(`Could not add "${file.name}": ${body.detail || uploadRes.status}`);
+        }
       }
 
-      const res = await fetch('http://127.0.0.1:8000/api/chat', {
+      addTypingIndicator();
+
+      const chatRes = await apiFetch(`/conversations/${activeChatId}/chat`, {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: text }),
       });
+      if (!chatRes.ok) throw new Error(`Server error: ${chatRes.status}`);
 
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
-      }
-
-      const data = await res.json();
+      const data = await chatRes.json();
       addAIResponse({ text: data.text, sources: data.sources });
+
+      if (isFirstMessage) {
+        const newTitle = text.length > 38 ? text.slice(0, 38) + '…' : text;
+        await apiFetch(`/conversations/${activeChatId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        titleEl.textContent = newTitle;
+        const conv = conversations.find(c => c.id === activeChatId);
+        if (conv) conv.title = newTitle;
+        renderChatList();
+      }
     } catch (err) {
       console.error(err);
+      removeTypingIndicator();
       addAIResponse({ text: "Sorry, I encountered an error.", sources: [] });
     }
 
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
     input.focus();
-  }
-
-  function newChat() {
-    saveActive();
-
-    const id = genId();
-    chats[id] = { title: 'New Conversation', snapshot: null };
-
-    // Add sidebar item
-    const list = document.getElementById('chatList');
-    const item = document.createElement('div');
-    item.className = 'chat-item';
-    item.dataset.id = id;
-    item.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <span class="chat-item-label">New Conversation</span>
-    `;
-    item.onclick = () => switchTo(id);
-    list.insertBefore(item, list.firstChild);
-
-    switchTo(id);
-  }
-
-  function loadChat(el, index) {
-    // Legacy handler for the hardcoded demo items — do nothing extra, switchTo handles it
-    if (el.dataset.id) switchTo(el.dataset.id);
   }
 
   // ── DRAG & DROP ──
@@ -1434,10 +1699,10 @@
     hideDropOverlay();
 
     const files = Array.from(e.dataTransfer.files);
-    // Unstructured loader supports numerous extensions. For simplicity here on the UI, we accept everything
-    // and let the backend explicitly drop anything it truly can't parse (like .exe).
-    const valid = files;
-    const rejected = 0;
+    // Matches the backend's supported formats (RAG/ingest.py's SUPPORTED_EXTENSIONS)
+    const SUPPORTED = ['.pdf', '.docx', '.txt', '.md'];
+    const valid = files.filter(f => SUPPORTED.some(ext => f.name.toLowerCase().endsWith(ext)));
+    const rejected = files.length - valid.length;
 
     if (valid.length > 0) {
       valid.forEach(f => {

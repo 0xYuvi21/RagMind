@@ -10,7 +10,7 @@ The VectorStore class wires those three steps together.
 
 Quick start
 -----------
-from vector_store import VectorStore
+from RAG.vector_store import VectorStore
 
 store = VectorStore()
 
@@ -44,9 +44,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
-# Pipeline imports — both modules live in the same RAG/ folder
-from ingest import DocumentIngestor
-from chunking import DocumentChunker
+# Pipeline imports — both modules live in the same RAG/ package
+from RAG.ingest import DocumentIngestor
+from RAG.chunking import DocumentChunker
 
 # ──────────────────────────────────────────────
 # Defaults — tweak here or via constructor args
@@ -117,6 +117,7 @@ class VectorStore:
         self,
         file_path: str,
         source_tag: Optional[str] = None,
+        image_output_dir: Optional[str] = None,
     ) -> int:
         """
         Full pipeline for a single file:
@@ -128,12 +129,15 @@ class VectorStore:
         ----------
         file_path  : str – path to a .pdf, .txt, etc.
         source_tag : str – optional metadata label for filtering later.
+        image_output_dir : str – where embedded images get extracted to
+                           (see DocumentIngestor); defaults to the file's own
+                           directory if omitted.
 
         Returns
         -------
         int – number of chunks stored.
         """
-        docs = self._ingestor.ingest(file_path)  # ← ingest.py
+        docs = self._ingestor.ingest(file_path, image_output_dir=image_output_dir)  # ← ingest.py
         chunks = self._chunker.chunk(docs)  # ← chunking.py
 
         if source_tag:
@@ -147,6 +151,7 @@ class VectorStore:
         file_content: bytes,
         file_name: str,
         source_tag: Optional[str] = None,
+        image_output_dir: Optional[str] = None,
     ) -> int:
         """
         Full pipeline for a dynamically uploaded file (in memory):
@@ -159,12 +164,19 @@ class VectorStore:
         file_content : bytes – raw bytes of the file.
         file_name    : str   – name of the file (e.g. "report.pdf").
         source_tag   : str   – optional metadata label for filtering later.
+        image_output_dir : str – where embedded images get extracted to
+                           (see DocumentIngestor); the caller should pass a
+                           persistent directory (e.g. this conversation's
+                           upload folder) since the uploaded file itself is
+                           only held in a temp file during parsing.
 
         Returns
         -------
         int – number of chunks stored.
         """
-        docs = self._ingestor.ingest_file_stream(file_content, file_name)
+        docs = self._ingestor.ingest_file_stream(
+            file_content, file_name, image_output_dir=image_output_dir
+        )
         chunks = self._chunker.chunk(docs)
 
         if source_tag:
@@ -268,6 +280,11 @@ class VectorStore:
         )
         pass  # collection cleared
 
+    def drop(self) -> None:
+        """Permanently remove this collection from disk (no empty collection left
+        behind, unlike clear()). Used when an entire conversation is deleted."""
+        self._db.delete_collection()
+
     def collection_name(self) -> str:
         """Active Chroma collection name."""
         return self._collection
@@ -298,6 +315,56 @@ class VectorStore:
 
         self._db.add_documents(clean_chunks, ids=ids)
         return len(clean_chunks)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Multi-tenancy: one Chroma COLLECTION PER CONVERSATION
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Isolation strategy: rather than one shared collection filtered by a chat_id
+# metadata field (a filter some future route/tool could forget to apply),
+# every conversation gets its own physically separate Chroma collection.
+# VectorStore already accepts an arbitrary `collection` name and shares one
+# on-disk `persist_dir`, so per-chat isolation needs no change to VectorStore
+# itself — just a factory that mints/caches one instance per chat_id with a
+# deterministic collection name. See SYSTEM_DESIGN.md for the trade-off.
+class VectorStoreFactory:
+    """Resolves/creates the isolated VectorStore for a given conversation id."""
+
+    def __init__(
+        self,
+        persist_dir: str = DEFAULT_PERSIST_DIR,
+        embedding_fn: Optional[Embeddings] = None,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+    ):
+        self._persist_dir = persist_dir
+        self._embedding_fn = embedding_fn
+        self._chunk_size = chunk_size
+        self._chunk_overlap = chunk_overlap
+        self._cache: dict[str, "VectorStore"] = {}
+
+    @staticmethod
+    def collection_name_for(chat_id: str) -> str:
+        return f"chat_{chat_id}"
+
+    def get_or_create(self, chat_id: str) -> "VectorStore":
+        collection = self.collection_name_for(chat_id)
+        if collection not in self._cache:
+            self._cache[collection] = VectorStore(
+                persist_dir=self._persist_dir,
+                collection=collection,
+                embedding_fn=self._embedding_fn,
+                chunk_size=self._chunk_size,
+                chunk_overlap=self._chunk_overlap,
+            )
+        return self._cache[collection]
+
+    def delete_for_chat(self, chat_id: str) -> None:
+        collection = self.collection_name_for(chat_id)
+        store = self._cache.pop(collection, None)
+        if store is not None:
+            store.drop()
 
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -8,19 +8,20 @@ Wires together:
     2. chunking.py     – DocumentChunker    : splits Documents into overlapping chunks
     3. vector_store.py – VectorStore        : embeds chunks and stores them in ChromaDB
 
-Usage
+Usage (run as a module from the project root, since RAG is now a package —
+see CLAUDE.md)
 -----
 # Ingest a single file
-uv run python RAG/main.py --file path/to/paper.pdf
+uv run python -m RAG.main --file path/to/paper.pdf
 
 # Ingest a whole folder (recursive)
-uv run python RAG/main.py --dir path/to/docs/ --recursive
+uv run python -m RAG.main --dir path/to/docs/ --recursive
 
 # Query after ingestion
-uv run python RAG/main.py --file path/to/paper.pdf --query "What is RAG?"
+uv run python -m RAG.main --file path/to/paper.pdf --query "What is RAG?"
 
 # Just query an already-populated store
-uv run python RAG/main.py --query "What is RAG?"
+uv run python -m RAG.main --query "What is RAG?"
 """
 
 from __future__ import annotations
@@ -30,9 +31,9 @@ import sys
 from pathlib import Path
 
 # ── Pipeline imports ────────────────────────────────────────────────────────
-from ingest import DocumentIngestor
-from chunking import DocumentChunker
-from vector_store import VectorStore, DEFAULT_PERSIST_DIR, DEFAULT_COLLECTION
+from RAG.ingest import DocumentIngestor
+from RAG.chunking import DocumentChunker
+from RAG.vector_store import VectorStore, DEFAULT_PERSIST_DIR, DEFAULT_COLLECTION
 
 # ── Pipeline defaults ───────────────────────────────────────────────────────
 DEFAULT_CHUNK_SIZE = 512

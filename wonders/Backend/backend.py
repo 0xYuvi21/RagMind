@@ -1,31 +1,36 @@
 """
 FastAPI backend for the RAG pipeline.
+
+Previously this module imported a module-level `pipeline`/`_store` singleton
+pair from Retrieve/llmquery.py and exposed one global, unauthenticated
+`/api/chat` endpoint shared by every caller — no user, no per-chat isolation.
+
+It now composes the auth and conversations routers (Backend/auth_router.py,
+Backend/conversations_router.py), each built from Backend/deps.py's
+Depends-based composition root, and initializes the SQLite schema on
+startup. There is no direct import of a pipeline or vector store here at
+all — every request resolves its own scoped dependencies.
 """
 
-import sys
-from pathlib import Path
-from typing import List, Optional
+from __future__ import annotations
 
-# Add project roots to path so we can import RAG modules
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "Retrieve"))
-sys.path.insert(0, str(PROJECT_ROOT / "RAG"))
+from contextlib import asynccontextmanager
 
-import os
-import re
-import tempfile
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 
-# Ensure uploads directory exists (use tempfile to prevent VS Code Live Server from auto-reloading the page)
-UPLOADS_DIR = Path(tempfile.gettempdir()) / "ragmind_uploads"
-UPLOADS_DIR.mkdir(exist_ok=True)
+from Backend.auth_router import router as auth_router
+from Backend.conversations_router import router as conversations_router
+from Backend.deps import init_app_db
 
-# Import our pipeline and vector store
-from llmquery import pipeline, _store
 
-app = FastAPI(title="RagMind API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_app_db()
+    yield
+
+
+app = FastAPI(title="RagMind API", lifespan=lifespan)
 
 # Enable CORS for the frontend
 app.add_middleware(
@@ -36,82 +41,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+app.include_router(conversations_router)
 
-@app.post("/api/chat")
-async def chat(query: str = Form(...), files: Optional[List[UploadFile]] = File(None)):
-    """
-    Process a chat message, optionally ingesting new files first.
-    """
-    # 1. Ingest any uploaded files dynamically
-    saved_paths = []
-    if files:
-        for f in files:
-            content = await f.read()
-            if content:
-                print(f"Ingesting uploaded file: {f.filename}")
 
-                # Save physically to disk for VLM/Tools
-                safe_name = f.filename.replace(" ", "_")
-                disk_path = UPLOADS_DIR / safe_name
-                with open(disk_path, "wb") as out_f:
-                    out_f.write(content)
-
-                saved_paths.append(str(disk_path.resolve()))
-
-                try:
-                    _store.add_file_stream(
-                        file_content=content,
-                        file_name=f.filename,
-                        source_tag="user_upload",
-                    )
-                except Exception as e:
-                    print(f"Skipping {f.filename}: {e}")
-
-    # Tell the Agent about the files available in the vector store
-    if saved_paths:
-        file_list = "\n".join([f"- {Path(p).name}" for p in saved_paths])
-        query = f"{query}\n\n[System Note: The following files were just uploaded and added to the knowledge base:\n{file_list}]"
-
-    # 2. Query the Agent pipeline (using standard messages)
-    try:
-        result = pipeline.invoke({"messages": [("user", query)]})
-        # The LangGraph react agent returns the final message in the 'messages' array
-        answer = result["messages"][-1].content
-    except Exception as e:
-        print(f"Agent Error: {e}")
-        return {
-            "text": "Sorry, I encountered an error while processing your request. Please try again or rephrase your query.",
-            "sources": [],
-        }
-
-    # 3. Extract unique sources to send back to the frontend
-    sources = set()
-    for doc in result.get("chunks", []):
-        m = doc.metadata
-        # Get the research paper name if available, fallback to the file name or source
-        src = m.get(
-            "research_paper_name", m.get("file_name", m.get("source", "Unknown"))
-        )
-        sources.add(src)
-
-    # Any newly uploaded files in this request are immediately added to context, so they count as sources
-    if files:
-        for f in files:
-            sources.add(f.filename)
-
-    # Finally, also explicitly add any sources the LLM mentioned in the "Sources:" block
-    sources_match = re.search(
-        r"Sources:\s*(.*?)(?:\n\nFollow-up:|$)", answer, re.IGNORECASE | re.DOTALL
-    )
-    if sources_match:
-        text_sources = sources_match.group(1).split("\n")
-        for raw_src in text_sources:
-            clean_src = raw_src.strip("-* \t")
-            if clean_src:
-                sources.add(clean_src)
-
-    return {"text": answer, "sources": list(sources)}
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    uvicorn.run("backend:app", host="127.0.0.1", port=8000, reload=False)
+    import uvicorn
+
+    uvicorn.run("Backend.backend:app", host="127.0.0.1", port=8000, reload=False)
