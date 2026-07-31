@@ -2,7 +2,9 @@
 
 Paragraphs -> NarrativeText, tables -> Table (tab-separated row text),
 embedded images -> Image (raw bytes saved to image_output_dir, so the VLM
-tool — VLM/imagellm.py's read_image — has a real path to look at).
+tool — VLM/imagellm.py's read_image — has a real path to look at) plus, if an
+OcrProvider is injected, -> OCRText (the image's literal text — see
+RAG/ocr.py).
 `iter_inner_content()` (python-docx >= 1.1) preserves document order across
 paragraphs and tables, unlike iterating `.paragraphs`/`.tables` separately.
 """
@@ -18,8 +20,13 @@ from docx.table import Table as DocxTable
 from docx.text.paragraph import Paragraph as DocxParagraph
 from langchain_core.documents import Document
 
+from RAG.ocr import OcrProvider
+
 
 class DocxParser:
+    def __init__(self, ocr_provider: Optional[OcrProvider] = None):
+        self._ocr_provider = ocr_provider
+
     def parse(self, file_path: str, image_output_dir: Optional[str] = None) -> List[Document]:
         docx_doc = DocxDocument(file_path)
         documents: List[Document] = []
@@ -42,9 +49,8 @@ class DocxParser:
         rows = ["\t".join(cell.text.strip() for cell in row.cells) for row in table.rows]
         return "\n".join(row for row in rows if row.strip())
 
-    @staticmethod
     def _extract_images(
-        docx_doc: DocxDocument, file_path: str, image_output_dir: Optional[str]
+        self, docx_doc: DocxDocument, file_path: str, image_output_dir: Optional[str]
     ) -> List[Document]:
         output_dir = Path(image_output_dir or tempfile.gettempdir())
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -70,4 +76,21 @@ class DocxParser:
                     metadata={"category": "Image", "image_path": str(image_path)},
                 )
             )
+
+            ocr_text = self._run_ocr(image_path)
+            if ocr_text:
+                images.append(
+                    Document(
+                        page_content=ocr_text,
+                        metadata={"category": "OCRText", "image_path": str(image_path)},
+                    )
+                )
         return images
+
+    def _run_ocr(self, image_path: Path) -> str:
+        if self._ocr_provider is None:
+            return ""
+        try:
+            return self._ocr_provider.extract_text(str(image_path)).strip()
+        except Exception:  # pragma: no cover - defensive against OCR engine failures
+            return ""

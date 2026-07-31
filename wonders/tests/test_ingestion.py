@@ -8,6 +8,7 @@ representing all three content types — nothing gets silently dropped.
 from __future__ import annotations
 
 from RAG.ingest import DocumentIngestor
+from tests.fakes import FakeOcrProvider
 from tests.fixtures.mixed_content import (
     make_mixed_docx,
     make_mixed_markdown,
@@ -113,6 +114,38 @@ def test_ingest_file_stream_matches_ingest_for_same_content(tmp_path):
 def test_supported_formats_lists_all_four_required_formats():
     formats = DocumentIngestor().supported_formats()
     assert {".pdf", ".docx", ".txt", ".md"} <= set(formats)
+
+
+def test_pdf_image_gets_ocr_text_when_ocr_provider_injected(tmp_path):
+    path = make_mixed_pdf(tmp_path)
+    docs = DocumentIngestor(
+        image_output_dir=str(tmp_path / "images"),
+        ocr_provider=FakeOcrProvider("Header A\tHeader B"),
+    ).ingest(str(path))
+
+    ocr_doc = next(d for d in docs if d.metadata["category"] == "OCRText")
+    assert ocr_doc.page_content == "Header A\tHeader B"
+    assert ocr_doc.metadata["content_type"] == "image_text"
+    assert "image_path" in ocr_doc.metadata
+
+
+def test_docx_image_gets_ocr_text_when_ocr_provider_injected(tmp_path):
+    path = make_mixed_docx(tmp_path)
+    docs = DocumentIngestor(
+        image_output_dir=str(tmp_path / "images"),
+        ocr_provider=FakeOcrProvider("scanned text"),
+    ).ingest(str(path))
+
+    ocr_doc = next(d for d in docs if d.metadata["category"] == "OCRText")
+    assert ocr_doc.page_content == "scanned text"
+    assert ocr_doc.metadata["content_type"] == "image_text"
+
+
+def test_no_ocr_text_produced_without_an_ocr_provider(tmp_path):
+    path = make_mixed_pdf(tmp_path)
+    docs = DocumentIngestor(image_output_dir=str(tmp_path / "images")).ingest(str(path))
+
+    assert not any(d.metadata["category"] == "OCRText" for d in docs)
 
 
 def test_ingest_directory_ingests_all_supported_files(tmp_path):

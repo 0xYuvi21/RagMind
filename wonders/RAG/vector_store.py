@@ -47,6 +47,7 @@ from langchain_core.embeddings import Embeddings
 # Pipeline imports — both modules live in the same RAG/ package
 from RAG.ingest import DocumentIngestor
 from RAG.chunking import DocumentChunker
+from RAG.ocr import OcrProvider
 
 # ──────────────────────────────────────────────
 # Defaults — tweak here or via constructor args
@@ -71,6 +72,9 @@ class VectorStore:
                     Defaults to HuggingFace all-MiniLM-L6-v2 (local, no API key).
     chunk_size    : int       – characters per chunk.
     chunk_overlap : int       – overlapping characters between adjacent chunks.
+    ocr_provider  : OcrProvider – optional strategy for extracting literal
+                    text out of images embedded in PDF/DOCX uploads (see
+                    RAG/ocr.py). None by default (no OCR run).
     """
 
     def __init__(
@@ -80,12 +84,13 @@ class VectorStore:
         embedding_fn: Optional[Embeddings] = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+        ocr_provider: Optional[OcrProvider] = None,
     ):
         self._persist_dir = persist_dir
         self._collection = collection
 
         # ── Pipeline components ──────────────────────────────────────────
-        self._ingestor = DocumentIngestor()
+        self._ingestor = DocumentIngestor(ocr_provider=ocr_provider)
         self._chunker = DocumentChunker(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -337,11 +342,13 @@ class VectorStoreFactory:
         embedding_fn: Optional[Embeddings] = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+        ocr_provider: Optional[OcrProvider] = None,
     ):
         self._persist_dir = persist_dir
         self._embedding_fn = embedding_fn
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
+        self._ocr_provider = ocr_provider
         self._cache: dict[str, "VectorStore"] = {}
 
     @staticmethod
@@ -357,6 +364,7 @@ class VectorStoreFactory:
                 embedding_fn=self._embedding_fn,
                 chunk_size=self._chunk_size,
                 chunk_overlap=self._chunk_overlap,
+                ocr_provider=self._ocr_provider,
             )
         return self._cache[collection]
 

@@ -1,0 +1,50 @@
+# Single-node Apache Kafka (KRaft mode — no Zookeeper needed) backing
+# RagMind's async document-ingestion queue. Start it with:
+#
+#     docker compose up -d
+#
+# The FastAPI app and the ingestion worker (Backend/ingestion_worker.py) both
+# run directly on the host, not inside Docker (see CLAUDE.md's "How to run
+# it"), so they connect via the PLAINTEXT_HOST listener on localhost:9094 —
+# also KAFKA_BOOTSTRAP_SERVERS' default in .env.example. The PLAINTEXT
+# listener on 9092 is for container-to-container traffic if that's ever
+# needed (e.g. a future consumer running in its own container); nothing
+# currently uses it.
+#
+# NOTE: written without a local Docker install available to test it
+# end-to-end (see CLAUDE.md's known environment quirks) — based on Apache
+# Kafka's official KRaft single-node quickstart. If `docker compose up`
+# fails, check `docker compose logs kafka` first; the most likely culprit is
+# the `apache/kafka` image tag having moved on — swap it for whatever's
+# current on Docker Hub.
+
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: ragmind-kafka
+    ports:
+      - "9094:9094" # host access — FastAPI app / ingestion worker connect here
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: "ragmind-kraft-cluster-01"
+    volumes:
+      - ragmind_kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  ragmind_kafka_data:

@@ -17,7 +17,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from Backend.db_models import Conversation, Message, User
+from Backend.db_models import Conversation, IngestionJob, IngestionJobStatus, Message, User
 
 
 class SqlAlchemyUserRepository:
@@ -82,6 +82,55 @@ class SqlAlchemyConversationRepository:
         if conversation is None:
             return
         self._session.delete(conversation)
+        self._session.commit()
+
+
+class SqlAlchemyIngestionJobRepository:
+    def __init__(self, session: Session):
+        self._session = session
+
+    def create(self, conversation_id: int, file_name: str, stored_path: str) -> IngestionJob:
+        job = IngestionJob(
+            conversation_id=conversation_id,
+            file_name=file_name,
+            stored_path=stored_path,
+            status=IngestionJobStatus.QUEUED,
+        )
+        self._session.add(job)
+        self._session.commit()
+        self._session.refresh(job)
+        return job
+
+    def get(self, job_id: int) -> Optional[IngestionJob]:
+        return self._session.get(IngestionJob, job_id)
+
+    def mark_processing(self, job_id: int) -> None:
+        self._set_status(job_id, IngestionJobStatus.PROCESSING)
+
+    def mark_done(self, job_id: int, chunks_added: int) -> None:
+        job = self.get(job_id)
+        if job is None:
+            return
+        job.status = IngestionJobStatus.DONE
+        job.chunks_added = chunks_added
+        job.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        self._session.commit()
+
+    def mark_failed(self, job_id: int, error_message: str) -> None:
+        job = self.get(job_id)
+        if job is None:
+            return
+        job.status = IngestionJobStatus.FAILED
+        job.error_message = error_message
+        job.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        self._session.commit()
+
+    def _set_status(self, job_id: int, status_value: str) -> None:
+        job = self.get(job_id)
+        if job is None:
+            return
+        job.status = status_value
+        job.updated_at = datetime.datetime.now(datetime.timezone.utc)
         self._session.commit()
 
 

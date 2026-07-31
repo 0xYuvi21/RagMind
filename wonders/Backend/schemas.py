@@ -63,6 +63,12 @@ class ChatResponse(BaseModel):
     sources: List[str] = []
 
 
-class UploadResponse(BaseModel):
+class IngestionJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
     file_name: str
-    chunks_added: int
+    status: str  # "queued" | "processing" | "done" | "failed" — see IngestionJobStatus
+    chunks_added: Optional[int] = None
+    error_message: Optional[str] = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime

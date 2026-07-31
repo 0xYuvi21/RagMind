@@ -1,0 +1,39 @@
+# RagMind model/service configuration.
+#
+# This is the single place to swap an LLM, embedding, VLM, or OCR model —
+# edit a value here and restart the server, no code changes needed. Secrets
+# (GROQ_API_KEY, JWT_SECRET_KEY) and environment-specific paths/URLs
+# (DATABASE_URL, CHROMA_PERSIST_DIR, UPLOADS_DIR, checkpoint settings) stay in
+# .env instead (see .env.example) — this file is only for "which model/
+# provider" knobs, not deployment secrets.
+#
+# Backend/config.py's Settings loads this file as a config source, so every
+# key below must match one of its field names. A value can still be
+# overridden per-environment via an env var / .env of the same name (env
+# takes priority over this file) but that should be the exception, not the
+# norm — prefer editing here.
+
+# ── LLM (chat model) ────────────────────────────────────────────────────────
+groq_model: llama-3.3-70b-versatile
+
+# ── Embeddings ───────────────────────────────────────────────────────────────
+embedding_model_name: sentence-transformers/all-MiniLM-L6-v2
+
+# ── VLM (Ollama vision model — read_image tool) ─────────────────────────────
+ollama_url: http://localhost:11434/api/generate
+ollama_vlm_model: richardyoung/smolvlm2-2.2b-instruct:latest
+
+# ── OCR (exact text extraction from images embedded in PDF/DOCX) ───────────
+# ocr_provider is the only OCR backend implemented today (RAG/ocr.py); the
+# field exists so a future backend can be swapped in by name, here, with no
+# code change to the parsers that call it. Set ocr_enabled: false to turn
+# OCR off entirely (e.g. if rapidocr-onnxruntime isn't installed).
+ocr_enabled: true
+ocr_provider: rapidocr
+
+# ── Retrieval ────────────────────────────────────────────────────────────────
+retrieval_top_k: 5
+
+# ── Chunking ─────────────────────────────────────────────────────────────────
+chunk_size: 512
+chunk_overlap: 100

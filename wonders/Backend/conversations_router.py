@@ -9,25 +9,37 @@ logger = logging.getLogger(__name__)
 
 from Backend.auth_dependencies import get_current_user
 from Backend.config import Settings
-from Backend.conversation_service import ConversationNotFoundError, ConversationService
+from Backend.conversation_service import (
+    ConversationNotFoundError,
+    ConversationService,
+    IngestionJobNotFoundError,
+)
 from Backend.db_models import User
 from Backend.deps import (
+    get_audit_logger,
     get_checkpoint_backend,
     get_conversation_repository,
+    get_ingestion_job_repository,
+    get_ingestion_producer,
     get_llm_provider,
     get_message_repository,
     get_settings_cached,
     get_vector_store_factory,
 )
-from Backend.repositories import SqlAlchemyConversationRepository, SqlAlchemyMessageRepository
+from Backend.interfaces import AuditLogger
+from Backend.repositories import (
+    SqlAlchemyConversationRepository,
+    SqlAlchemyIngestionJobRepository,
+    SqlAlchemyMessageRepository,
+)
 from Backend.schemas import (
     ChatRequest,
     ChatResponse,
     ConversationCreateRequest,
     ConversationRenameRequest,
     ConversationResponse,
+    IngestionJobResponse,
     MessageResponse,
-    UploadResponse,
 )
 from RAG.vector_store import VectorStoreFactory
 
@@ -40,7 +52,10 @@ def get_conversation_service(
     vector_store_factory: VectorStoreFactory = Depends(get_vector_store_factory),
     llm_provider=Depends(get_llm_provider),
     checkpoint_backend=Depends(get_checkpoint_backend),
+    ingestion_job_repository: SqlAlchemyIngestionJobRepository = Depends(get_ingestion_job_repository),
+    ingestion_producer=Depends(get_ingestion_producer),
     settings: Settings = Depends(get_settings_cached),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
 ) -> ConversationService:
     return ConversationService(
         conversation_repository=conversation_repository,
@@ -49,6 +64,11 @@ def get_conversation_service(
         llm_provider=llm_provider,
         checkpoint_backend=checkpoint_backend,
         uploads_dir=settings.uploads_dir,
+        ingestion_job_repository=ingestion_job_repository,
+        ingestion_producer=ingestion_producer,
+        ollama_url=settings.ollama_url,
+        ollama_vlm_model=settings.ollama_vlm_model,
+        audit_logger=audit_logger,
     )
 
 
@@ -110,25 +130,45 @@ def list_messages(
         raise _not_found()
 
 
-@router.post("/{conversation_id}/upload", response_model=UploadResponse)
+@router.post(
+    "/{conversation_id}/upload",
+    response_model=IngestionJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def upload_document(
     conversation_id: int,
     current_user: User = Depends(get_current_user),
     service: ConversationService = Depends(get_conversation_service),
     file: UploadFile = File(...),
 ):
+    """Queues the file for async ingestion (see ConversationService.ingest_upload)
+    and returns immediately with a job id — the document is NOT necessarily
+    searchable yet. Poll GET .../uploads/{job_id} until status is "done"."""
     content = await file.read()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
 
     try:
-        chunks_added = service.ingest_upload(conversation_id, current_user.id, content, file.filename)
+        job = service.ingest_upload(conversation_id, current_user.id, content, file.filename)
     except ConversationNotFoundError:
         raise _not_found()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    return UploadResponse(file_name=file.filename, chunks_added=chunks_added)
+    return job
+
+
+@router.get("/{conversation_id}/uploads/{job_id}", response_model=IngestionJobResponse)
+def get_upload_status(
+    conversation_id: int,
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    service: ConversationService = Depends(get_conversation_service),
+):
+    try:
+        return service.get_ingestion_job(conversation_id, current_user.id, job_id)
+    except (ConversationNotFoundError, IngestionJobNotFoundError):
+        raise _not_found()
 
 
 @router.post("/{conversation_id}/chat", response_model=ChatResponse)

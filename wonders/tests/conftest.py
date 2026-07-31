@@ -12,15 +12,17 @@ the fakes in tests/fakes.py instead of live infrastructure.
 from __future__ import annotations
 
 import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from Backend import deps
 from Backend.backend import app
 from Backend.config import Settings
 from Backend.db import build_engine, build_session_factory, init_db
+from Backend.repositories import SqlAlchemyIngestionJobRepository
 from RAG.vector_store import VectorStoreFactory
 from Retrieve.checkpointer import InMemoryCheckpointBackend
-from tests.fakes import FakeLLMProvider, make_fake_embeddings, make_final_answer
+from tests.fakes import FakeIngestionProducer, FakeLLMProvider, make_fake_embeddings, make_final_answer
 
 
 @pytest.fixture
@@ -87,11 +89,18 @@ def client(test_settings, vector_store_factory, checkpoint_backend, llm_script):
     def override_llm_provider():
         return FakeLLMProvider(list(llm_script["responses"]), capture=llm_script["capture"])
 
+    def override_ingestion_producer(session=Depends(deps.get_db_session)):
+        return FakeIngestionProducer(
+            job_repository=SqlAlchemyIngestionJobRepository(session),
+            vector_store_factory=vector_store_factory,
+        )
+
     app.dependency_overrides[deps.get_settings_cached] = override_get_settings
     app.dependency_overrides[deps.get_db_session] = override_get_db_session
     app.dependency_overrides[deps.get_vector_store_factory] = override_vector_store_factory
     app.dependency_overrides[deps.get_checkpoint_backend] = override_checkpoint_backend
     app.dependency_overrides[deps.get_llm_provider] = override_llm_provider
+    app.dependency_overrides[deps.get_ingestion_producer] = override_ingestion_producer
 
     with TestClient(app) as test_client:
         yield test_client

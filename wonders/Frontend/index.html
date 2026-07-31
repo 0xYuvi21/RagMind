@@ -1623,8 +1623,12 @@
     document.getElementById('sendBtn').disabled = true;
 
     try {
-      // 1. Upload any attached files into THIS conversation first, so the
-      // question below can immediately be answered from them.
+      // 1. Upload any attached files into THIS conversation first. Ingestion
+      // now runs asynchronously (a Kafka worker embeds it in the background —
+      // see CLAUDE.md), so the upload response is just "queued": poll the
+      // job status endpoint until it's actually done before asking a
+      // question that depends on it, otherwise the question below could run
+      // before the document is searchable.
       for (const file of filesToSend) {
         const formData = new FormData();
         formData.append('file', file);
@@ -1632,9 +1636,22 @@
           method: 'POST',
           body: formData,
         });
+        const body = await uploadRes.json().catch(() => ({}));
         if (!uploadRes.ok) {
-          const body = await uploadRes.json().catch(() => ({}));
           showToast(`Could not add "${file.name}": ${body.detail || uploadRes.status}`);
+          continue;
+        }
+
+        showToast(`Processing "${file.name}"…`);
+        const finalStatus = await pollUploadStatus(activeChatId, body.id);
+        if (finalStatus.status === 'failed') {
+          showToast(`Failed to process "${file.name}": ${finalStatus.error_message || 'unknown error'}`);
+        } else if (finalStatus.status === 'done') {
+          showToast(`"${file.name}" ready (${finalStatus.chunks_added ?? 0} chunks)`);
+        } else {
+          // Timed out waiting — still queued/processing server-side; the
+          // question below may not find it yet, but don't block forever.
+          showToast(`"${file.name}" is still processing — ask again shortly if needed`);
         }
       }
 
@@ -1732,6 +1749,25 @@
     const overlay = document.getElementById('dropOverlay');
     overlay.classList.remove('active');
     overlay.classList.remove('hovering');
+  }
+
+  // Polls GET /conversations/{id}/uploads/{jobId} until the async ingestion
+  // job (see CLAUDE.md's Kafka section) reaches "done"/"failed", or gives up
+  // after ~30s (2s * 15) so a stuck job can't hang the chat UI forever —
+  // whatever status is last observed is returned either way.
+  async function pollUploadStatus(conversationId, jobId, { intervalMs = 2000, maxAttempts = 15 } = {}) {
+    let lastBody = { status: 'queued' };
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await apiFetch(`/conversations/${conversationId}/uploads/${jobId}`);
+      if (res.ok) {
+        lastBody = await res.json();
+        if (lastBody.status === 'done' || lastBody.status === 'failed') {
+          return lastBody;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    return lastBody;
   }
 
   let toastTimer = null;

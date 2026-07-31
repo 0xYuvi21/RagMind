@@ -22,29 +22,26 @@ from typing import Dict, List, Optional
 
 from langchain_core.documents import Document
 
+from RAG.ocr import OcrProvider
 from RAG.parsers.docx_parser import DocxParser
 from RAG.parsers.markdown_parser import MarkdownParser
 from RAG.parsers.pdf_parser import PdfParser
 from RAG.parsers.text_parser import PlainTextParser
 
 # ─────────────────────────────────────────────────────────────────────────────
-# One FormatParser per supported extension. Adding a new format means adding
-# one new parser class under RAG/parsers/ and one entry here — nothing else
-# in the ingestion pipeline needs to change (Strategy pattern).
+# Extensions this pipeline can dispatch to a FormatParser. Adding a new
+# format means adding one new parser class under RAG/parsers/ and one entry
+# in DocumentIngestor._build_parsers() below — nothing else in the ingestion
+# pipeline needs to change (Strategy pattern).
 # ─────────────────────────────────────────────────────────────────────────────
-FORMAT_PARSERS: Dict[str, object] = {
-    ".txt": PlainTextParser(),
-    ".md": MarkdownParser(),
-    ".docx": DocxParser(),
-    ".pdf": PdfParser(),
-}
-
-SUPPORTED_EXTENSIONS = set(FORMAT_PARSERS)
+SUPPORTED_EXTENSIONS = {".txt", ".md", ".docx", ".pdf"}
 
 # Element categories every FormatParser tags its output with. Unlike the old
 # Unstructured-based filter, there's no boilerplate ("Header"/"Footer"/etc.)
-# to drop here — each parser only ever emits meaningful content.
-ALLOWED_ELEMENT_CATEGORIES = {"NarrativeText", "Table", "Image"}
+# to drop here — each parser only ever emits meaningful content. "OCRText" is
+# the literal text of an embedded image (see RAG/ocr.py); it's only produced
+# when an ocr_provider is supplied to DocumentIngestor.
+ALLOWED_ELEMENT_CATEGORIES = {"NarrativeText", "Table", "Image", "OCRText"}
 
 
 class DocumentIngestor:
@@ -62,6 +59,12 @@ class DocumentIngestor:
         persistence (e.g. Backend/conversation_service.py, which wants images
         to live next to the rest of a conversation's uploads) should pass one
         explicitly.
+    ocr_provider : OcrProvider, optional
+        Strategy for extracting literal text out of embedded images (PDF/DOCX
+        only — see RAG/ocr.py). Left as None by default (no OCR run) so bare
+        `DocumentIngestor()` calls (tests, RAG/main.py's CLI demo) don't pay
+        for loading an OCR engine; production wires a real one in via
+        Backend/deps.py -> RAG/vector_store.py's VectorStore/VectorStoreFactory.
 
     Usage
     -----
@@ -70,8 +73,22 @@ class DocumentIngestor:
     docs = ingestor.ingest_directory("path/to/docs/", recursive=True)
     """
 
-    def __init__(self, image_output_dir: Optional[str] = None):
+    def __init__(
+        self,
+        image_output_dir: Optional[str] = None,
+        ocr_provider: Optional[OcrProvider] = None,
+    ):
         self._image_output_dir = image_output_dir
+        self._parsers = self._build_parsers(ocr_provider)
+
+    @staticmethod
+    def _build_parsers(ocr_provider: Optional[OcrProvider]) -> Dict[str, object]:
+        return {
+            ".txt": PlainTextParser(),
+            ".md": MarkdownParser(),
+            ".docx": DocxParser(ocr_provider=ocr_provider),
+            ".pdf": PdfParser(ocr_provider=ocr_provider),
+        }
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public API
@@ -156,9 +173,8 @@ class DocumentIngestor:
     # Private helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _get_parser(ext: str):
-        parser = FORMAT_PARSERS.get(ext)
+    def _get_parser(self, ext: str):
+        parser = self._parsers.get(ext)
         if parser is None:
             raise ValueError(f"Unsupported extension: {ext}")
         return parser
@@ -170,7 +186,9 @@ class DocumentIngestor:
         content = doc.page_content or ""
         category = doc.metadata.get("category", "")
 
-        content_type = {"Image": "image", "Table": "table"}.get(category, "text")
+        content_type = {"Image": "image", "Table": "table", "OCRText": "image_text"}.get(
+            category, "text"
+        )
 
         meta = doc.metadata.copy() if doc.metadata else {}
         meta.update(

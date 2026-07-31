@@ -3,13 +3,16 @@
 Per-page text blocks -> NarrativeText, ruled tables (page.find_tables(), a
 built-in PyMuPDF heuristic — no external model) -> Table, embedded images
 (page.get_images() + doc.extract_image()) -> Image (raw bytes saved to
-image_output_dir for the VLM tool to use).
+image_output_dir for the VLM tool to use) plus, if an OcrProvider is
+injected, -> OCRText (the image's literal text, via RAG/ocr.py).
 
-Text-layer only: there is no OCR step here (that would need Tesseract, an
-external system binary this project deliberately avoids — see
-RAG/parsers/base.py's module docstring). A scanned/image-only PDF with no
-extractable text layer will yield no NarrativeText; this is a documented
-limitation, not a silent failure (see CLAUDE.md).
+Text-layer only for the page itself: there is no OCR step over whole pages
+(that would need Tesseract, an external system binary this project
+deliberately avoids — see RAG/parsers/base.py's module docstring). A
+scanned/image-only PDF with no extractable text layer will yield no
+NarrativeText; this is a documented limitation, not a silent failure (see
+CLAUDE.md). Embedded images, however, do get OCR'd — see RAG/ocr.py's
+RapidOcrProvider, which needs no such system binaries.
 """
 
 from __future__ import annotations
@@ -21,8 +24,13 @@ from typing import List, Optional
 import fitz
 from langchain_core.documents import Document
 
+from RAG.ocr import OcrProvider
+
 
 class PdfParser:
+    def __init__(self, ocr_provider: Optional[OcrProvider] = None):
+        self._ocr_provider = ocr_provider
+
     def parse(self, file_path: str, image_output_dir: Optional[str] = None) -> List[Document]:
         output_dir = Path(image_output_dir or tempfile.gettempdir())
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -71,8 +79,7 @@ class PdfParser:
                 )
         return documents
 
-    @staticmethod
-    def _extract_images(pdf, page, page_number: int, stem: str, output_dir: Path) -> List[Document]:
+    def _extract_images(self, pdf, page, page_number: int, stem: str, output_dir: Path) -> List[Document]:
         documents = []
         for index, img in enumerate(page.get_images(full=True), start=1):
             xref = img[0]
@@ -96,4 +103,25 @@ class PdfParser:
                     },
                 )
             )
+
+            ocr_text = self._run_ocr(image_path)
+            if ocr_text:
+                documents.append(
+                    Document(
+                        page_content=ocr_text,
+                        metadata={
+                            "category": "OCRText",
+                            "page_number": page_number,
+                            "image_path": str(image_path),
+                        },
+                    )
+                )
         return documents
+
+    def _run_ocr(self, image_path: Path) -> str:
+        if self._ocr_provider is None:
+            return ""
+        try:
+            return self._ocr_provider.extract_text(str(image_path)).strip()
+        except Exception:  # pragma: no cover - defensive against OCR engine failures
+            return ""

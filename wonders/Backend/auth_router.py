@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from Backend.auth_service import AuthService, EmailAlreadyRegisteredError, InvalidCredentialsError
 from Backend.config import Settings
-from Backend.deps import get_settings_cached, get_user_repository
+from Backend.deps import get_audit_logger, get_settings_cached, get_user_repository
+from Backend.interfaces import AuditLogger
 from Backend.repositories import SqlAlchemyUserRepository
 from Backend.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 
@@ -13,8 +14,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def get_auth_service(
     user_repository: SqlAlchemyUserRepository = Depends(get_user_repository),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
 ) -> AuthService:
-    return AuthService(user_repository)
+    return AuthService(user_repository, audit_logger)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
